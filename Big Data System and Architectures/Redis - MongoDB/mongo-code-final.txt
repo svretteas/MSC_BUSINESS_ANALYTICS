@@ -1,0 +1,358 @@
+	#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#                                         Task 2                                                   #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+#-----#
+# 2.1 #
+#-----#
+
+# libraries we'll need
+library(tidyverse) 
+library(dplyr) 
+library(jsonlite) # for reading in json
+
+# create the files_list containing the paths for easy reading 
+
+setwd("C:/Users/svret/BIKES_DATASET/") # set directory 
+files_list<-  read.csv(file.choose(),sep = '\n', header = FALSE) # read the file with the paths
+files_list<- files_list[-c(1,2),] # remove first two lines
+files_list<- as.data.frame(files_list) # make dataframe
+files_list[,1] <- gsub('\\', '//', files_list[,1], fixed = TRUE) # string manipulation 
+files_list[,1] <- gsub('//', '/', files_list[,1], fixed = TRUE) # string manipulation 
+
+head(files_list) # ok for reading 
+
+
+# List with all json files 
+y<- list()
+for (i in 1:nrow(files_list)) {
+  y[[i]] <- fromJSON(readLines(files_list[i,]))
+}
+
+# make empty vectors 
+
+ad_id <- c()
+price <- c()
+category<- c()
+registration<- c()
+mileage<- c()
+type<- c()
+brand<- c()
+model<- c()
+
+# creaete the columns we want for the project
+
+# ad_id
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$ad_id)){mileage[i] <- "NA"}
+  else {mileage[i]<- y[[i]]$ad_id}                     
+}
+
+# Price
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$ad_data$Price)){Price[i] <- "NA"}
+  else {price[i]<- y[[i]]$ad_data$Price}              
+}
+
+# category
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$ad_data$Category)){Category[i] <- "NA"}
+  else {category[i]<- y[[i]]$ad_data$Category} 
+}
+
+# registration
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$ad_data$Registration)){registration[i]<-"NA"}
+  else {registration[i]<-y[[i]]$ad_data$Registration}  
+}
+
+# Mileage 
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$ad_data$Mileage)){mileage[i] <- "NA"}
+  else {mileage[i]<- y[[i]]$ad_data$Mileage}        
+}
+
+# brand
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$metadata$brand)){brand[i]<-"NA"}
+  else{brand[i]<-y[[i]]$metadata$brand}            
+}
+
+# model
+for (i in 1:length(y)){
+  if(is.null(y[[i]]$metadata$model)){model[i]<-"NA"}
+  else{model[i]<-y[[i]]$metadata$model}          
+}
+
+
+# unlist 
+
+ad_id1 <- unlist(ad_id, use.names=FALSE)
+price1 <- unlist(price, use.names=FALSE)
+category1 <- unlist(category, use.names=FALSE)
+registration1 <- unlist(registration, use.names=FALSE)
+mileage1<- unlist(mileage, use.names=FALSE)
+brand1 <- unlist(brand, use.names=FALSE)
+model1 <- unlist(model, use.names=FALSE)
+
+
+# create df in order to check the data 
+
+df <- cbind(ad_id1,price1,category1,registration1,mileage1,brand1,model1) 
+
+df <- as.data.frame(df) 
+
+# function for cleaning 
+clean <- function(x) {
+  # Price 
+  if (x$ad_data$Price == "Askforprice") { x$ad_data$Price <- NA}  
+  else {x$ad_data$Price <- gsub("β‚¬","", x$ad_data$Price); x$ad_data$Price <- as.numeric(gsub("[\200.]", "", x$ad_data$Price))};
+  # Mileage 
+  if (is.null(x$ad_data$Mileage)) { x$ad_data$Mileage <- NA}  
+  x$ad_data$Mileage <- gsub("km","", x$ad_data$Mileage); x$ad_data$Mileage <- as.numeric(gsub(",","", x$ad_data$Mileage));
+  # Registration 
+  year <- 2021
+  x$ad_data$Registration <- as.numeric(str_sub(x$ad_data$Registration,-4,-1));
+  x$ad_data$age <- year - x$ad_data$Registration
+  return(x)
+}
+
+# prepare final_data
+final_data <- c()
+
+# finaldata 
+for (i in 1:nrow(files_list)) {
+  x <- fromJSON(readLines(files_list[i,], warn=FALSE, encoding = "UTF-8"))
+  x <- clean(x)
+  j <- toJSON(x, auto_unbox = TRUE)
+  final_data <- c(final_data, j)
+}
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+library("mongolite")
+
+# Open a connection to MongoDB
+m <- mongo(collection = "bikes1",  db = "mydb", url = "mongodb://localhost")
+
+# insert the data in mongo db
+m$insert(final_data)
+
+#-----#
+# 2.2 #
+#-----# 
+
+m$count() # 29701 
+
+#-----#
+# 2.3 #
+#-----#   
+
+m$aggregate(
+  '[{
+	"$match": {
+		"ad_data.Price": {
+			"$gt": 100
+		}
+	}
+},
+{
+	"$group": {
+		"_id": null,
+		"AvgPrice": {
+			"$avg": "$ad_data.Price"
+		},
+		"count": {
+			"$sum": 1
+		}
+	}
+}]')
+
+
+#-----#
+# 2.4 #
+#-----#  
+
+# maximum
+m$aggregate(
+  '[{
+	"$group": {
+		"_id": null,
+		"Max_Price": {
+			"$max": "$ad_data.Price"
+		},
+		"count": {
+			"$max": 1 
+		}
+	}
+}]')
+
+
+# minimum above 100 
+
+m$aggregate(
+  '[{
+	"$match": {
+		"ad_data.Price": {
+			"$gt": 100
+		}
+	}
+},
+{
+	"$group": {
+		"_id": null,
+		"MinPrice": {
+			"$min": "$ad_data.Price"
+		},
+		"count": {
+			"$sum": 1
+		}
+	}
+}]')
+
+
+#-----#
+# 2.5 #
+#-----# How many listings have a price that is identified as negotiable?
+
+m$aggregate(
+  '[{
+	"$match": {
+		"metadata.model": {
+			"$regex": "Negotiable",
+			"$options": "i"
+		}
+	}
+},
+{
+	"$group": {
+		"_id": null,
+		"count": {
+			"$sum": 1
+		}
+	}
+}]')
+
+
+
+#-----#
+# 2.7 #
+#-----# 
+
+m$aggregate('[{
+	"$group": {
+		"_id": "$metadata.brand",
+		"AveragePrice": {
+			"$avg": "$ad_data.Price"
+		}
+	}
+},
+{
+	"$sort": {
+		"AveragePrice": -1
+	}
+},
+{
+	"$limit": 1
+}]')
+
+#------#
+# 2.8 #
+#------# 
+
+m$aggregate('[{
+	"$group": {
+		"_id": "$metadata.brand",
+		"AverageAge": {
+			"$avg": "$ad_data.age"
+		}
+	}
+},
+{
+	"$sort": {
+		"AverageAge": -1
+	}
+},
+{
+	"$limit": 10
+},
+{
+	"$project": {
+		"AverageAge": {
+			"$round": ["$AverageAge",
+			1]
+		}
+	}
+}]')
+
+
+#-----#
+# 2.9 #
+#-----#  
+
+
+m$aggregate(
+  '[{
+	"$match": {
+		"extras": {
+			"$regex": "ABS",
+			"$options": "i"
+		}
+	}
+},
+{
+	"$group": {
+		"_id": null,
+		"count": {
+			"$sum": 1
+		}
+	}
+}]')
+
+#------#
+# 2.10 #
+#------#  (Optional) What is the average Mileage of bikes that have “ABS” AND “Led lights” as an extra?
+
+
+m$aggregate(
+  '[{
+	"$match": {
+		"extras": {
+			"$all" : ["ABS", "Led lights"]
+		}
+	}
+},
+{
+	"$group": {
+		"_id": null,
+		"AverageMilage": {
+			"$avg": "$ad_data.Mileage"
+		}
+	}
+}]')
+
+
+
+
+
+#####################################################################################################################################
+
+# not complete.
+
+#------#
+# 2.6  #
+#------# (Optional) For each Brand, what percentage of its listings is listed as negotiable?
+#------#
+# 2.11 #
+#------# (Optional) What are the TOP 3 colors per bike category?
+#------#
+# 2.12 #
+#------# (Optional) Identify a set of ads that you consider “Best Deals”. 
+
+
+
+
+
+
+
+

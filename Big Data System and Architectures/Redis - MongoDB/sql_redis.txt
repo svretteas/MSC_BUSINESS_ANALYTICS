@@ -1,0 +1,120 @@
+use redis;
+
+select count(*) from emails_sent; 
+
+SELECT * from modified_listings;
+SELECT * from emails_sent;
+
+-- Q1--
+SELECT count(UserID) as No_of_users_Jan_modified from modified_listings where MonthID = 1 AND ModifiedListing = 1;
+
+-- Q2 --
+SELECT count(UserID) as No_of_users_Jan_modified from modified_listings where MonthID = 1 AND ModifiedListing = 0;
+
+-- Q3 --
+
+select count(Emails_Jan) as Intersection_All_months_emails_UserId
+from
+(select Emails_Jan 
+from (SELECT distinct(UserID) as Emails_Jan from emails_sent where MonthID = 1) as t1 
+INNER JOIN (SELECT distinct(UserID) as Emails_Feb from emails_sent where MonthID = 2) as t2 ON t1.Emails_Jan = t2.Emails_Feb) as t3
+INNER JOIN (SELECT distinct(UserID) as Emails_Mar from emails_sent where MonthID = 3) as t4 on t3.Emails_Jan = t4.Emails_Mar;
+
+-- Q4 --
+select COUNT(UserID)
+FROM
+(select *
+from
+(select t1.UserID 
+from (SELECT distinct(UserID) from emails_sent where MonthID = 1) as t1 
+INNER JOIN (SELECT distinct(UserID) from emails_sent where MonthID = 3) as t2 ON t1.UserID = t2.UserID) as t3
+LEFT JOIN (SELECT distinct(UserID) AS FEB from emails_sent where MonthID = 2) as t4 on t3.UserID = t4.FEB) as t5
+where t5.FEB IS NULL;
+
+-- Q5 --
+select count(*)
+from
+(select UserID FROM modified_listings where MonthID=1 AND ModifiedListing=1) as t3
+inner join
+(select UserID from (SELECT UserID, sum(EmailOpened) as Sum from emails_sent where MonthID = 1 group by UserID) as t1 where t1.Sum = 0) as t2 
+on t2.UserID = t3.UserID 
+
+-- Q6--
+
+CREATE VIEW JAN AS
+select t3.UserID
+from
+(select UserID FROM modified_listings where MonthID=1 AND ModifiedListing=1) as t3
+inner join
+(select UserID from (SELECT UserID, sum(EmailOpened) as Sum from emails_sent where MonthID = 1 group by UserID) as t1 where t1.Sum = 0) as t2 
+on t2.UserID = t3.UserID ;
+
+
+CREATE VIEW FEB AS
+select t3.UserID
+from
+(select UserID FROM modified_listings where MonthID=2 AND ModifiedListing=1) as t3
+inner join
+(select UserID from (SELECT UserID, sum(EmailOpened) as Sum from emails_sent where MonthID = 2 group by UserID) as t1 where t1.Sum = 0) as t2 
+on t2.UserID = t3.UserID; 
+
+CREATE VIEW MAR AS
+select t3.UserID
+from
+(select UserID FROM modified_listings where MonthID=3 AND ModifiedListing=1) as t3
+inner join
+(select UserID from (SELECT UserID, sum(EmailOpened) as Sum from emails_sent where MonthID = 3 group by UserID) as t1 where t1.Sum = 0) as t2 
+on t2.UserID = t3.UserID ;
+
+select count(*)
+from
+(select t1.UserID
+FROM
+(SELECT UserID FROM JAN
+UNION 
+SELECT UserID FROM FEB) AS t1
+UNION 
+select UserID FROM MAR
+ORDER BY UserID) as t2;
+
+
+
+3	3	01:45:14	SELECT count(UserID) as No_of_users_Jan_modified from modified_listings where MonthID = 1 AND ModifiedListing = 1
+ LIMIT 0, 1000	1 row(s) returned	0.078 sec / 0.000 sec
+ 3	4	01:46:14	SELECT count(UserID) as No_of_users_Jan_modified from modified_listings where MonthID = 1 AND ModifiedListing = 0
+ LIMIT 0, 1000	1 row(s) returned	0.046 sec / 0.000 sec
+ 3	5	01:47:28	select count(Emails_Jan) as Intersection_All_months_emails_UserId
+ from
+ (select Emails_Jan 
+ from (SELECT distinct(UserID) as Emails_Jan from emails_sent where MonthID = 1) as t1 
+ INNER JOIN (SELECT distinct(UserID) as Emails_Feb from emails_sent where MonthID = 2) as t2 ON t1.Emails_Jan = t2.Emails_Feb) as t3
+ INNER JOIN (SELECT distinct(UserID) as Emails_Mar from emails_sent where MonthID = 3) as t4 on t3.Emails_Jan = t4.Emails_Mar
+ LIMIT 0, 1000	1 row(s) returned	0.125 sec / 0.000 sec
+ 3	6	01:48:46	select COUNT(UserID)
+ FROM
+ (select *
+ from
+ (select t1.UserID 
+ from (SELECT distinct(UserID) from emails_sent where MonthID = 1) as t1 
+ INNER JOIN (SELECT distinct(UserID) from emails_sent where MonthID = 3) as t2 ON t1.UserID = t2.UserID) as t3
+ LEFT JOIN (SELECT distinct(UserID) AS FEB from emails_sent where MonthID = 2) as t4 on t3.UserID = t4.FEB) as t5
+ where t5.FEB IS NULL
+ LIMIT 0, 1000	1 row(s) returned	0.141 sec / 0.000 sec
+ 3	7	01:49:37	select count(*)
+ from
+ (select UserID FROM modified_listings where MonthID=1 AND ModifiedListing=1) as t3
+ inner join
+ (select UserID from (SELECT UserID, sum(EmailOpened) as Sum from emails_sent where MonthID = 1 group by UserID) as t1 where t1.Sum = 0) as t2 
+ on t2.UserID = t3.UserID
+ LIMIT 0, 1000	1 row(s) returned	0.094 sec / 0.000 sec
+ 3	9	01:50:49	select count(*)
+ from
+ (select t1.UserID
+ FROM
+ (SELECT UserID FROM JAN
+ UNION 
+ SELECT UserID FROM FEB) AS t1
+ UNION 
+ select UserID FROM MAR
+ ORDER BY UserID) as t2
+ LIMIT 0, 1000	1 row(s) returned	0.344 sec / 0.000 sec

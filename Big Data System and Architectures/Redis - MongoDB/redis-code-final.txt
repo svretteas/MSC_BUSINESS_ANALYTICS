@@ -1,0 +1,434 @@
+#install.packages("redux")
+library("redux")
+
+# connect locally 
+r <- redux::hiredis(
+  redux::redis_config(
+    host = "127.0.0.1", 
+    port = "6379")) 
+
+# test connection 
+r$SET("demo","value") # ok 
+r$GET('demo') # ok 
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#                                      Data Load/cleansing                                         #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+setwd("D:/Documents_2/R - Business Analytics") # set directory
+require(foreign)
+
+# read the files 
+emails_sent <- read.csv(file = "emails_sent.csv",
+                        header=T,sep=",") 
+modified_listings <- read.csv(file = "modified_listings.csv",
+                              header=T,sep=",")
+# structure of files
+str(emails_sent)
+str(modified_listings)
+
+
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+#                                         Task 1                                                   #
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+#-----#
+# 1.1 #
+#-----#
+January <- modified_listings[which(modified_listings$MonthID==1),-2] # subset for January 
+February <- modified_listings[which(modified_listings$MonthID==2),-2] # subset for February
+March <- modified_listings[which(modified_listings$MonthID==3),-2] # subset for March
+
+# January modified bitmap 
+for (i in 1:length(January$UserID)){
+  r$SETBIT("January_modified",January[i,1],January[i,2])
+}
+
+r$BITCOUNT("January_modified") # 9969
+
+#-----#
+# 1.2 #
+#-----#
+
+# January not modified bitmap 
+r$BITOP("NOT","January_not_modified","January_modified")
+r$BITCOUNT("January_not_modified") # 10031
+
+length(January$UserID) # 19999
+
+# sum
+r$BITCOUNT("January_modified")+r$BITCOUNT("January_not_modified")
+table(January$ModifiedListing)
+
+#-----#
+# 1.3 #
+#-----#
+
+library(dplyr)
+require(tidyr)
+pivot13<- emails_sent %>%
+  select(UserID, MonthID, EmailID) %>%
+  group_by(UserID,MonthID) %>%
+  summarise(Count_EmailID = n())
+
+pivot13 <- as.data.frame(pivot13)
+
+pivot13$Count_EmailID <- 1
+
+Jan_rec <- subset(pivot13, MonthID==1, c(1,3)) # Jan received subset
+Feb_rec <- subset(pivot13, MonthID==2, c(1,3)) # Feb received subset
+Mar_rec <- subset(pivot13, MonthID==3, c(1,3)) # Mar received subset
+
+ 
+# January_rec bitmap
+for (i in 1:nrow(Jan_rec)){
+  r$SETBIT("January_rec",Jan_rec[i,1], "1")
+}
+
+# February_rec bitmap
+for (i in 1:nrow(Feb_rec)){
+  r$SETBIT("February_rec",Feb_rec[i,1],  "1")
+}
+# March_rec bitmap
+for (i in 1:nrow(Mar_rec)){
+  r$SETBIT("March_rec",Mar_rec[i,1], "1")
+}
+
+# intersection 
+
+r$BITOP("AND","Total",c("January_rec","February_rec","March_rec"))
+r$BITCOUNT("Total") # 2668
+
+#-----#
+# 1.4 #
+#-----#
+
+r$BITOP("NOT","February_not_rec","February_rec") # February not received bitmap
+r$BITCOUNT("February_not_rec") # 10334
+r$BITCOUNT("March_rec") # 9520
+r$BITCOUNT("January_rec") # 9617
+
+r$BITOP("AND","Jan_Mar",c("January_rec","March_rec")) 
+
+r$BITOP("AND","Jan_Mar_not_Feb",c("Jan_Mar","February_not_rec"))
+r$BITCOUNT("Jan_Mar_not_Feb") # 2417
+
+#-----#
+# 1.5 #
+#-----#
+
+# January Not Opened
+EmailsGenJanuary <- subset(emails_sent, MonthID==1, c(UserID,EmailOpened))
+
+library(dplyr)
+library(tidyverse)
+
+str(EmailsGenJanuary)
+
+EmailsGenJanuary <- EmailsGenJanuary %>%
+  select(UserID,EmailOpened) %>%
+  group_by(UserID) %>%
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+EmailsGenJanuary <- as.data.frame(EmailsGenJanuary)
+
+EmailsGenJan <- data.frame()
+
+for (i in 1:length(EmailsGenJanuary$UserID)){
+  if(EmailsGenJanuary[i,2] !=0){EmailsGenJan[i,1]=EmailsGenJanuary[i,1];EmailsGenJan[i,2]=0}
+  else{EmailsGenJan[i,1]=EmailsGenJanuary[i,1]; EmailsGenJan[i,2]=1}
+}
+
+# NotOpenedJan bitmap
+for (i in 1:nrow(EmailsGenJan)){
+  r$SETBIT("NotOpenedJan",EmailsGenJan[i,1],EmailsGenJan[i,2])
+}
+
+r$BITCOUNT("NotOpenedJan") # 3972
+# Intercection
+r$BITOP("AND","EmailsRecJanNotModified", c("January_modified","NotOpenedJan"))
+r$BITCOUNT("EmailsRecJanNotModified") # 1961
+
+
+#-----#
+# 1.6 #
+#-----#
+
+#---February
+EmailsGenFebruary <- subset(emails_sent, MonthID==2, c(UserID,EmailOpened))
+
+library(dplyr)
+library(tidyverse)
+
+str(EmailsGenFebruary)
+
+EmailsGenFebruary <- EmailsGenFebruary %>%
+  select(UserID,EmailOpened) %>%
+  group_by(UserID) %>%
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+EmailsGenFebruary <- as.data.frame(EmailsGenFebruary)
+
+EmailsGenFeb <- data.frame()
+for (i in 1:length(EmailsGenFebruary$UserID)){
+  if(EmailsGenFebruary[i,2] !=0){EmailsGenFeb[i,1]=EmailsGenFebruary[i,1];EmailsGenFeb[i,2]=0}
+  else{EmailsGenFeb[i,1]=EmailsGenFebruary[i,1]; EmailsGenFeb[i,2]=1}
+}
+
+
+# NotOpenedFeb bitmap 
+for (i in 1:nrow(EmailsGenFeb)){
+  r$SETBIT("NotOpenedFeb",EmailsGenFeb[i,1],EmailsGenFeb[i,2])
+}
+
+r$BITCOUNT("NotOpenedFeb") # 3945
+
+# February Modified bitmap
+
+for (i in 1:length(February$UserID)){
+  r$SETBIT("February_modified",February[i,1],February[i,2])
+}
+
+r$BITCOUNT("February_modified") # 10007
+
+# Intercection
+r$BITOP("AND","EmailsRecFebNotModified", c("February_modified","NotOpenedFeb"))
+r$BITCOUNT("EmailsRecFebNotModified") #1971
+
+# ---March
+EmailsGenMarch <- subset(emails_sent, MonthID==3, c(UserID,EmailOpened))
+
+library(dplyr)
+library(tidyverse)
+
+str(EmailsGenMarch)
+
+EmailsGenMarch <- EmailsGenMarch %>%
+  select(UserID,EmailOpened) %>%
+  group_by(UserID) %>%
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+EmailsGenMarch <- as.data.frame(EmailsGenMarch)
+
+EmailsGenMar <- data.frame()
+for (i in 1:length(EmailsGenMarch$UserID)){
+  if(EmailsGenMarch[i,2] !=0){EmailsGenMar[i,1]=EmailsGenMarch[i,1];EmailsGenMar[i,2]=0}
+  else{EmailsGenMar[i,1]=EmailsGenMarch[i,1]; EmailsGenMar[i,2]=1}
+}
+
+# NotOpenedMar bitmap
+for (i in 1:nrow(EmailsGenMar)){
+  r$SETBIT("NotOpenedMar",EmailsGenMar[i,1],EmailsGenMar[i,2])
+}
+
+r$BITCOUNT("NotOpenedMar")# 3948
+
+# March Modified bitmap
+for (i in 1:length(March$UserID)){
+  r$SETBIT("March_modified",March[i,1],March[i,2])
+}
+
+r$BITCOUNT("March_modified") # 9991
+
+# Intercection
+r$BITOP("AND","EmailsRecMarNotModified", c("March_modified","NotOpenedMar"))
+r$BITCOUNT("EmailsRecMarNotModified") # 1966
+
+r$BITOP("OR","Jan_Feb_Mar", c("EmailsRecJanNotModified","EmailsRecFebNotModified","EmailsRecMarNotModified"))
+r$BITCOUNT("Jan_Feb_Mar") # 5249
+
+
+#-----#
+# 1.8 #
+#-----#
+
+
+length(unique(emails_sent$UserID)) # 16006 total users 
+
+length(unique(emails_sent$EmailID)) # 40148 total email sent 
+
+length(unique(emails_sent$EmailID)[which(emails_sent$MonthID==1)]) # 13459 total emails sent January 
+
+length(unique(emails_sent$EmailID)[which(emails_sent$MonthID==2)]) # 13535 total emails sent February 
+
+length(unique(emails_sent$EmailID)[which(emails_sent$MonthID==3)]) # 13154 total emails sent March 
+
+
+length(unique(emails_sent$EmailID)[which(emails_sent$EmailOpened != 0)]) # 20009 emails did not opened 
+
+length(unique(emails_sent$EmailID)[which(emails_sent$EmailOpened != 0 
+                                         & emails_sent$MonthID ==1)]) # 6709 not opened in January
+
+length(unique(emails_sent$EmailID)[which(emails_sent$EmailOpened != 0 
+                                         & emails_sent$MonthID ==2)]) # 6780 not opened in February
+
+length(unique(emails_sent$EmailID)[which(emails_sent$EmailOpened != 0
+                                         & emails_sent$MonthID ==3)]) # 6520 not opened in March
+
+20009 / 40148 # 49% of total emails sent not opened 
+
+6709 / 13459 # 49% of total emails sent not opened - January
+
+6780 / 13535 # 50% of total emails sent not opened - February 
+
+6520 / 13154 # 49% of total emails sent not opened - March 
+
+# January - users that opened and modified their emails
+
+EmailsGenJanuary1<- subset(emails_sent, MonthID==1,c(UserID,EmailOpened))
+
+
+library(dplyr)
+library(tidyverse)
+
+
+EmailsGenJanuary1 <- EmailsGenJanuary1 %>%
+  
+  select(UserID,EmailOpened) %>%
+  
+  group_by(UserID) %>%
+  
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+
+
+EmailsGenJanuary1 <- as.data.frame(EmailsGenJanuary1)
+EmailsGenJan1 <- data.frame()
+
+
+for (i in 1:length(EmailsGenJanuary1$UserID)){
+  
+  if(EmailsGenJanuary1[i,2]!=0){EmailsGenJan1[i,1]=EmailsGenJanuary1[i,1];
+  
+  EmailsGenJan1[i,2]=1}
+  
+  else{EmailsGenJan1[i,1]=EmailsGenJanuary1[i,1]; EmailsGenJan1[i,2]=0}
+  
+}
+
+# OpenedJan1 bitmap
+for (i in 1:nrow(EmailsGenJan1)){
+  
+  r$SETBIT("OpenedJan1",EmailsGenJan1[i,1],EmailsGenJan1[i,2])
+  
+}
+
+r$BITCOUNT("OpenedJan1") # 5645
+
+# Intercection
+
+r$BITOP("AND","EmailsRecJanModified1",c("January_modified", "OpenedJan1"))
+
+r$BITCOUNT("EmailsRecJanModified1") # 2797
+
+
+
+# February - users that opened and modified their emails
+
+EmailsGenFebruary1 <- subset(emails_sent, MonthID==2, c(UserID,EmailOpened))
+
+library(dplyr)
+library(tidyverse)
+
+
+EmailsGenFebruary1 <- EmailsGenFebruary1 %>%
+  
+  select(UserID,EmailOpened) %>%
+  
+  group_by(UserID) %>%
+  
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+
+
+EmailsGenFebruary1 <- as.data.frame(EmailsGenFebruary1)
+
+EmailsGenFeb1 <- data.frame()
+
+for (i in 1:length(EmailsGenFebruary1$UserID)){
+  
+  if(EmailsGenFebruary1[i,2]!=0){EmailsGenFeb1[i,1]=EmailsGenFebruary1[i,1];
+  
+  EmailsGenFeb1[i,2]=1}
+  
+  else{EmailsGenFeb1[i,1]=EmailsGenFebruary1[i,1]; EmailsGenFeb1[i,2]=0}
+  
+}
+
+# OpenedFeb1 bitmap
+for (i in 1:nrow(EmailsGenFeb1)){
+  
+  r$SETBIT("OpenedFeb1",EmailsGenFeb1[i,1],EmailsGenFeb1[i,2])
+  
+}
+
+# Intercection
+
+r$BITOP("AND","EmailsRecFebModified",c("February_modified", "OpenedFeb1"))
+r$BITCOUNT("EmailsRecFebModified") # 2874
+
+# March - users that opened and modified their emails
+
+EmailsGenMarch1 <- subset(emails_sent, MonthID==3, c(UserID,EmailOpened))
+
+
+
+EmailsGenMarch1 <- EmailsGenMarch1 %>%
+  
+  select(UserID,EmailOpened) %>%
+  
+  group_by(UserID) %>%
+  
+  summarise(Total_Emails_Opened = sum(EmailOpened))
+
+
+
+EmailsGenMarch1 <- as.data.frame(EmailsGenMarch1)
+
+
+
+EmailsGenMar1 <- data.frame()
+
+for (i in 1:length(EmailsGenMarch1$UserID)){
+  
+  if(EmailsGenMarch1[i,2]!=0){EmailsGenMar1[i,1]=EmailsGenMarch1[i,1];
+  
+  EmailsGenMar1[i,2]=1}
+  
+  else{EmailsGenMar1[i,1]=EmailsGenMarch[i,1]; EmailsGenMar1[i,2]=0}
+  
+}
+
+# OpenedMar bitmap
+for (i in 1:nrow(EmailsGenMar1)){
+  
+  r$SETBIT("OpenedMar",EmailsGenMar1[i,1],EmailsGenMar1[i,2])
+  
+}
+
+# Intercection
+
+r$BITOP("AND","EmailsRecMarModified", c("March_modified","OpenedMar"))
+
+r$BITCOUNT("EmailsRecMarModified") #2783
+
+
+# Union
+
+r$BITOP("OR","Jan_Feb_Mar2", c("EmailsRecJanModified1","EmailsRecFebModified",
+                               
+                               "EmailsRecMarModified"))
+
+r$BITCOUNT("Jan_Feb_Mar2") # 7190
+
+
+
+100*(7190/16006) # 45 %   
+
+#~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~#
+
+
+
+
+
+
