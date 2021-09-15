@@ -1,0 +1,265 @@
+data acquisition time stamp, line number, bus number, position reporting time stamp, bus position latitude, bus position longitude.
+
+ sudo curl www... 
+
+ sudo gunzip -oasa.gz
+
+ ls            # to see the directory 
+
+ head -10 oasa # to see first 10 first lines
+
+1. ,
+
+2. FILE NOT LOADED COMPLETELY
+
+3. C:\Users\svret\AppData\Local\Packages\CanonicalGroupLimited.UbuntuonWindows_79rhkp1fndgsc\LocalState\rootfs\home\steliosbt
+
+4. 6990193 rows # wc -l oasa	 
+
+5. What is the data acquisition time stamp of the last record in the stream you fetched?
+
+tail -n 1 oasa 
+
+# tail command with -n 1 option in order to print the last line of the file 
+ 
+6. How many different buses appear in the data?
+
+# awk -F, ''{print $3}' oasa | sort | uniq | wc -l
+
+# awk -F command to specify  ' , ' as text separator and print the third column   | pipe 
+# pipe the output to sort command in order to remove the duplicates
+# pipe the output to uniq command to remove the duplicates 
+# pipe the output to word count command with option -l to count the lines.  
+
+7. How many different routes are covered by the data?
+
+awk -F, '{print $2}' oasa | sort -u | wc -l
+
+# 445
+
+# awk -F, to process the text , print routes column and specify ',' as text separator
+# sort -u command in order to sort the column and remove duplicates simultaneously 
+# wc -l  command in order to count the records  
+
+8. How many dates are covered by the data?
+
+# 47
+
+# cut -d "T" -f 1 oasa | sort | uniq | wc -l
+
+# cut command with -d option to specify delimiter "T" in the first column of the file | pipe 
+# pipe the output to sort command (prepare for remove of the duplicates) 
+# uniq to remove the duplicates 
+# cw -l in order to count the lines 
+
+9.Which route is associated with the most position reports?	 
+
+#   629 3512
+
+# awk '!seen[$5,$6]++' oasa | awk -F ',' '{print $2}'| sort | uniq -c | sort -nr | head -1
+
+# first command simultaneously removes duplicates in 5th and 6th columns without sort 
+# 2nd command prints 2nd column of output ( the routes for the unique positions reports
+# sort the output  (prepare for the uniq ) 
+# uniq command with -c option in order to get the occurences of each line 
+# sort command with -nr to have a reversed sorting 
+# head -1 command to print the most occured route 
+
+10. How many position reports appear in the data more than once? 
+
+# 504318
+
+# awk -F, '{print $5 " " $6}' oasa | sort | uniq -d | wc -l
+
+# prints the 5th and 6th column 
+# sort the output 
+# uniq command with -d option in order to get only the repeated lines 
+# word count command in order to count the lines 
+
+11. Which is the most frequent first two-digit sequence in numbers assigned to buses?
+
+1462206 10
+
+# awk -F, '{print $3}' oasa | cut -c 1-2 | sort | uniq -c | sort -nr | head -1
+
+# prints the 3rd column 
+# cut -c  1-2  ( splits the first two digits of the output ) 
+# sort the output 
+# uniq with option -c in order to count the occurences 
+# sort with option -nr to reverse with the occurences 
+# output the first -1 
+
+
+12. How many buses did not travel on February 6th 2020?
+
+# buses for 2020 02 06 
+
+grep '^2021-02-06' oasa | awk -F, '{print $3}' | sort | uniq > bus_20210206.txt 
+
+# uniq buses 
+
+awk -F, '{print $3}' oasa| sort | uniq > uniq_bus.txt
+
+#  comm -12 uniq_bus.txt bus_20210206.txt | wc -l 
+
+# 871 buses did not travel on 2021 02 06 
+
+13. On which date were the most buses on the road?
+
+# 297 89034 Jan 17 2021
+
+awk -F, '{print $3,$4}' oasa | sort -k2 | uniq | awk '{ print substr( $0, 1, length($0)-14 ) }' | sort | uniq -c | sort -nr | head -1 
+
+# prints 3rd and 4th columns 
+# sort command with -k option to sort the 2nd column 
+# uniq command to remove the duplicates 
+# awk command  and substring to print the requested output 
+# sort the output 
+# uniq with -c option to get the occurences 
+# sort -nr to  sort in reverse order
+# head -1 to get the most frequent
+
+
+14. Which route has been served by the highest number of different buses?
+
+# 180 2045 
+
+# awk -F, '{print $2,$3}' oasa | sort -k2 | uniq | awk '{print$1}' | sort | uniq -c | sort -rn | head -1
+
+# print 2nd and 3rd column
+# sort the second column 
+# remove duplicates
+# output the first column and sort it 
+# remove the repeated lines 
+# sort in reverse order
+# get the first line 
+
+15. On which hour of the day (e.g. 09) are there overall the most buses on the road?
+
+# 434451 11AM
+
+# awk -F, '{print $3,$4}' oasa | awk '{print $1 " " $5}' | awk -F " " '{print substr($2,1,2)substr($2,13,2)}' | sort | uniq -c| sort -k1 -rn | head -1
+
+# print the 3rd and 4th column 
+# from the output print the 1st and 5th and substring the text for hour 
+# sort the output 
+# uniq with -c option in order to count the repeated lines
+# sort the 1st column with reverse order
+# get the first line 
+
+16. On which hour of the day (e.g. 23) are there overall the fewest buses on the road?
+
+# awk -F, '{print $3,$4}' oasa | awk '{print $1 " " $5}' | awk -F " " '{print substr($2,1,2)substr($2,13,2)}' | sort | uniq -c| sort -k1 -rn | tail -1
+
+# 1 23419 03AM
+
+##################################################################################################################
+
+17. For which weekday (e.g. Wednesday) does your data set contain the most records?
+
+# 	cut -d "T" -f 1 oasa | head > dates.txt
+
+# 
+
+##################################################################################################################
+
+
+
+18. What are the bounding box geographic coordinates of the area served by the buses?
+
+# Bounding box's most northern latitude (degrees north)
+
+# awk -F, '{print $5}' oasa | sort -rn | head -1
+
+# 38.1386970
+
+# Bounding box's most southern latitude (degrees north) 
+
+# awk -F, '{print $5}' oasa | sort -rn | tail -1
+
+# 37.8328690
+
+# Bounding box's most western longitude (degrees east)
+
+# awk -F, '{print $6}' oasa | sort -rn | tail -1
+
+# 23.4863660
+
+# Bounding box's most eastern longitude (degrees east)
+
+# awk -F, '{print $6}' oasa | sort -rn | head -1
+
+# 23.9509090
+
+# Commands used
+
+
+
+
+19. Which bus has appeared closest to your favorite location?
+
+# 06049 37.9391540 23.6485740 0.00010096
+
+# awk -F, '{print $3,$5,$6, sqrt ( ($5-37.9390734)^2 + ($6-23.6486348)^2) }' oasa | sort -u | sort -k4 | head -1
+
+# my favorite location  37.9390734 , 23.6486348
+# print the requested columns and calculate the 4th the Euclidean distance  (formula) 
+# remove duplicates and sort simultaneously
+#  sort the Euclidean distance column in order to find the requested
+# get the first line (min Euclidean distance) 
+
+19. Which bus has appeared closest to your favorite location?
+Obtain the coordinates of your favorite location (e.g. workplace, home, restaurant, bar, club, cinema, café, gym) using e.g. GPS or an online map.
+For a small area, such as Athens, you can use the simple Euclidean distance formula for calculating the distance between your workplace and the bus's location. (4 points)
+If you cannot obtain an answer for this question based on distance, choose a bus at random, using e.g. the shuf command. (1 point)
+The answer to this question will become the "chosen bus" specified in the next questions.
+
+
+20. How many position reports have been sent by the chosen bus?
+
+# 1159
+
+# awk -F,  '{print $3,$4,$5,$6}' oasa | awk '{if($1=="06049") print $6,$7}' | sort -u | wc -l
+
+# print the 3rd 4th 5th 6th columns 
+# from this output we implement if  in the 1st column to filter the lines for the bus 06049 # # and prin the position reports
+# sort and remove duplicates simultaneously
+# count the lines 
+
+21. What was the chosen bus's last position in the obtained data stream?
+
+# 12:57:29:000PM 37.9617750 23.6749290
+
+# awk -F,  '{print $3,$4,$5,$6}' oasa | awk '{if($1=="06049") print $5,$6,$7}' | sort -k1 | tail -1
+
+# print the columns 
+# implement if to filter only lines for 06049 bus 
+# sort the time column 
+# tail -1 in order to get the last position 
+
+22. On which date has the chosen bus given the most position reports?
+
+221 Feb 5 2021
+
+# awk -F,  '{print $3,$4,$5,$6}' oasa | awk '{if($1=="06049") print $2,$3,$4}' | sort -nr | uniq -c | sort -k1 -rn | head -1
+
+
+23. On how many routes has the chosen bus traveled?
+
+# 5
+
+# awk -F,  '{print $3,$2}' oasa | awk '{if($1=="06049") print $2}' | sort -u | wc -l
+
+# print the routes and bus columns 
+# implement if to filter only lines for 06049 bus 
+# sort and remove duplicates simultaneously
+# count the rows 
+
+24. How many buses have shared at least one route with the chosen bus? 
+
+# 225
+
+# awk -F,  '{print $3,$2}' oasa | awk '{if($1=="06049") print $2}' | sort -u > 06049_routes.txt # unique routes for bus 06049 
+# awk -F,  '{print $2,$3}' oasa | sort -u > all_routes.txt # all routes file 
+
+# join -1 1 -2 1 06049_routes.txt all_routes.txt | wc -l
