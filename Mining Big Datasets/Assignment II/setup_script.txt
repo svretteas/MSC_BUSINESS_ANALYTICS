@@ -1,0 +1,64 @@
+--- NEO4J ----
+
+----Article----
+
+CREATE CONSTRAINT ON (article:Article) ASSERT article.id IS UNIQUE
+
+---- Articles ----
+
+:auto USING PERIODIC COMMIT 500 LOAD CSV 
+FROM "file:///ArticleNodes.csv" AS Articles 
+FIELDTERMINATOR ',' 
+CREATE (a:Article{id:toInteger(Articles[0]), title:Articles[1], year:Articles[2], abstract:Articles[4]})
+
+---- Journals ----
+
+CREATE CONSTRAINT ON (j:Journal) ASSERT j.journal IS UNIQUE;
+
+:auto USING PERIODIC COMMIT 500 
+LOAD CSV FROM "file:///ArticleNodes.csv" AS journals
+WITH journals
+WHERE journals[3] IS NOT NULL
+MERGE (n:Journal {journal: journals[3]})
+ON MATCH SET n.id = toInteger(journals[0])
+
+---- PUBLISHED_IN ----
+
+:auto USING PERIODIC COMMIT 500 
+LOAD CSV FROM "file:///ArticleNodes.csv" AS row
+MATCH (a:Article), (j:Journal)
+WHERE a.id = toInteger(row[0]) AND j.journal = row[3]
+CREATE (a) - [r:PUBLISHED_IN] -> (j)
+
+----Citations-----
+
+:auto USING PERIODIC COMMIT 500 
+LOAD CSV FROM "file:///Citations.csv" AS citations 
+FIELDTERMINATOR '\t'
+MATCH (article1:Article {id: toInteger(citations[0])}) 
+MATCH (article2:Article {id: toInteger(citations[1])}) 
+MERGE (article1)-[:CITES]->(article2)
+
+----Authors----
+
+CREATE CONSTRAINT ON (auth:Author) ASSERT auth.name IS UNIQUE;
+CREATE INDEX ON :Author(name)
+
+:auto USING PERIODIC COMMIT 500
+LOAD CSV FROM "file:///AuthorNodes.csv" AS row
+WITH row
+WHERE row[1] IS NOT NULL
+MERGE (n:Author {name: row[1]})
+ON MATCH SET n.id = toInteger(row[0])
+
+---- WRITTEN_BY ----
+
+:auto USING PERIODIC COMMIT 500 
+LOAD CSV FROM "file:///AuthorNodes.csv" AS relationships 
+FIELDTERMINATOR ','
+MATCH (article:Article {id: toInteger(relationships[0])}) 
+MATCH (author:Author {name: relationships[1]}) 
+MERGE (article)-[:WRITTEN_BY]->(author)
+
+---- DB VISUALIZATION ----
+call db.schema.visualization()
